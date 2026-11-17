@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hangman</title>
+<style>
+  :root {
+    --bg: #070a14; --text: #eaf0ff; --muted: #7f8bb0;
+    --cyan: #22e6ff; --violet: #a78bfa; --pink: #ff3d8b; --green: #3dffa0; --amber: #ffc83d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; color: var(--text); background: var(--bg); overflow-x: hidden;
+    font-family: "Segoe UI", system-ui, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 18px;
+  }
+
+  /* ---------- animated background ---------- */
+  .orb { position: fixed; border-radius: 50%; filter: blur(95px); opacity: .38; z-index: 0;
+         animation: drift 16s ease-in-out infinite alternate; }
+  .o1 { width: 460px; height: 460px; background: #1597ff; top: -140px; left: -120px; }
+  .o2 { width: 420px; height: 420px; background: var(--pink); bottom: -150px; right: -110px; animation-delay: -6s; }
+  .o3 { width: 320px; height: 320px; background: var(--violet); top: 40%; left: 55%; opacity: .22; animation-delay: -11s; }
+  @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.15); } }
+  .grid { position: fixed; inset: 0; z-index: 0; opacity: .5;
+          background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+          background-size: 46px 46px;
+          -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 20%, transparent 75%);
+                  mask-image: radial-gradient(circle at 50% 45%, #000 20%, transparent 75%); }
+
+  /* ---------- game card ---------- */
+  .game { position: relative; z-index: 2; width: 100%; max-width: 680px;
+          background: rgba(16, 22, 41, .74); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(255,255,255,.09); border-radius: 24px; padding: 22px 26px 26px;
+          box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08); }
+  .game.shake { animation: shake .4s; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-9px); }
+                     40% { transform: translateX(8px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(4px); } }
+
+  .logo { margin: 0 0 16px; text-align: center; font-size: clamp(30px, 6vw, 48px); font-weight: 900;
+          letter-spacing: .2em; text-indent: .2em;
+          background: linear-gradient(90deg, var(--cyan), var(--violet) 55%, var(--pink));
+          -webkit-background-clip: text; background-clip: text; color: transparent;
+          filter: drop-shadow(0 0 14px rgba(34,230,255,.35)); }
+
+  .hud { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .pill { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+          padding: 7px 14px; border-radius: 999px; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+  .pill b { color: var(--text); font-size: 15px; }
+  .hearts { display: flex; gap: 5px; }
+  .heart { font-size: 22px; line-height: 1; color: var(--pink); filter: drop-shadow(0 0 6px rgba(255,61,139,.7)); transition: all .3s; }
+  .heart.off { color: #2b3350; filter: none; transform: scale(.85); }
+
+  .stage { display: flex; justify-content: center; margin: 6px 0 0; }
+  svg { width: 230px; height: 250px; overflow: visible; }
+  .gallows { stroke: #5b6a99; stroke-width: 5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .part { stroke: var(--cyan); stroke-width: 5; fill: none; stroke-linecap: round;
+          stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .45s ease, stroke .4s;
+          filter: drop-shadow(0 0 5px rgba(34,230,255,.8)); }
+  .part.on { stroke-dashoffset: 0; }
+  svg.dead .part { stroke: var(--pink); filter: drop-shadow(0 0 6px rgba(255,61,139,.9)); }
+
+  .word { display: flex; justify-content: center; gap: clamp(5px, 1.4vw, 10px); flex-wrap: wrap; margin: 4px 0 6px; }
+  .tile { width: clamp(26px, 8vw, 46px); height: clamp(40px, 11vw, 58px);
+          display: flex; align-items: center; justify-content: center;
+          font-size: clamp(22px, 6vw, 32px); font-weight: 800; text-transform: uppercase;
+          background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
+          border-bottom: 3px solid var(--cyan); border-radius: 10px;
+          box-shadow: 0 0 12px rgba(34,230,255,.15); }
+  .tile.blank { color: transparent; }
+  .tile.pop { animation: pop .4s cubic-bezier(.2,1.6,.4,1); border-bottom-color: var(--green); }
+  .tile.miss { color: var(--pink); border-bottom-color: var(--pink); box-shadow: 0 0 12px rgba(255,61,139,.25); }
+  @keyframes pop { 0% { transform: scale(.4) translateY(8px); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+  .msg { text-align: center; min-height: 24px; margin: 8px 0 10px; font-weight: 600; letter-spacing: .03em; color: var(--amber); }
+  .msg.good { color: var(--green); } .msg.bad { color: var(--pink); }
+
+  .kb { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .krow { display: flex; gap: clamp(4px, 1.2vw, 8px); justify-content: center; width: 100%; }
+  .key { flex: 0 1 50px; min-width: 0; height: 48px; font-size: 17px; font-weight: 800; text-transform: uppercase;
+         font-family: inherit; color: var(--text); cursor: pointer;
+         background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
+         border: 1px solid rgba(255,255,255,.12); border-bottom-width: 3px; border-radius: 10px;
+         transition: transform .08s, box-shadow .15s, border-color .15s; }
+  .key:hover:not(:disabled) { border-color: var(--cyan); box-shadow: 0 0 14px rgba(34,230,255,.4); transform: translateY(-2px); }
+  .key:active:not(:disabled) { transform: translateY(1px); }
+  .key:disabled { cursor: default; }
+  .key.good { background: rgba(61,255,160,.16); border-color: var(--green); color: var(--green); }
+  .key.bad { background: rgba(255,61,139,.14); border-color: var(--pink); color: var(--pink); opacity: .6; }
+
+  .actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn { flex: 1; padding: 13px 10px; font-size: 14px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+         font-family: inherit; border-radius: 12px; cursor: pointer; color: var(--text);
+         background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); transition: all .15s; }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .btn.undo:hover:not(:disabled) { border-color: var(--amber); box-shadow: 0 0 16px rgba(255,200,61,.35); color: var(--amber); }
+  .btn.next { background: linear-gradient(90deg, rgba(34,230,255,.25), rgba(167,139,250,.25)); border-color: var(--cyan); }
+  .btn.next:hover:not(:disabled) { box-shadow: 0 0 18px rgba(34,230,255,.45); }
+  .btn.restart:hover:not(:disabled) { border-color: var(--pink); box-shadow: 0 0 16px rgba(255,61,139,.35); color: var(--pink); }
+
+  .sound { position: fixed; top: 14px; right: 14px; z-index: 5; padding: 8px 14px; font-size: 12px; font-weight: 700;
+           letter-spacing: .08em; text-transform: uppercase; font-family: inherit; color: var(--muted); cursor: pointer;
+           background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 999px; }
+  .sound:hover { color: var(--text); }
+
+  /* ---------- result overlay ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+             background: rgba(5,8,18,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+             opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
+  .overlay.show { opacity: 1; visibility: visible; transition: opacity .35s .75s, visibility 0s .75s; }
+  .modal { text-align: center; padding: 34px 40px; border-radius: 22px; max-width: 90vw;
+           background: rgba(18,24,45,.95); border: 1px solid rgba(255,255,255,.12);
+           box-shadow: 0 30px 90px rgba(0,0,0,.6); transform: scale(.9); transition: transform .35s .75s cubic-bezier(.2,1.5,.4,1); }
+  .overlay.show .modal { transform: scale(1); }
+  .modal h2 { margin: 0 0 8px; font-size: 34px; font-weight: 900; letter-spacing: .18em; text-indent: .18em; }
+  .modal h2.won { color: var(--green); text-shadow: 0 0 22px rgba(61,255,160,.6); }
+  .modal h2.lost { color: var(--pink); text-shadow: 0 0 22px rgba(255,61,139,.6); }
+  .modal h2.done { color: var(--cyan); text-shadow: 0 0 22px rgba(34,230,255,.6); }
+  .modal p { margin: 0 0 22px; color: var(--muted); font-size: 16px; }
+  .modal p b { color: var(--text); letter-spacing: .15em; text-transform: uppercase; }
+  .modal .btn { flex: none; padding: 14px 34px; font-size: 15px; }
+
+  #fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+  @media (max-width: 480px) { .game { padding: 18px 14px 20px; } .key { height: 44px; font-size: 15px; } }
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="grid"></div>
+<button class="sound" id="sound" onclick="toggleSound()">Sound: On</button>
+
+<div class="game" id="game">
+  <h1 class="logo">HANGMAN</h1>
+
+  <div class="hud">
+    <span class="pill">Score <b id="score">0</b> / <b id="played">0</b></span>
+    <span class="hearts" id="hearts"></span>
+    <span class="pill">Words left <b id="remaining">0</b></span>
+  </div>
+
+  <div class="stage">
+    <svg viewBox="0 0 200 220" id="svg">
+      <path class="gallows" d="M20 208 H120 M50 208 V14 H140 V40"/>
+      <circle class="part" id="p0" pathLength="1" cx="140" cy="58" r="18"/>
+      <path class="part" id="p1" pathLength="1" d="M140 76 V135"/>
+      <path class="part" id="p2" pathLength="1" d="M140 90 L116 118"/>
+      <path class="part" id="p3" pathLength="1" d="M140 90 L164 118"/>
+      <path class="part" id="p4" pathLength="1" d="M140 135 L118 175"/>
+      <path class="part" id="p5" pathLength="1" d="M140 135 L162 175"/>
+    </svg>
+  </div>
+
+  <div class="word" id="word"></div>
+  <div class="msg" id="msg"></div>
+
+  <div class="kb" id="kb"></div>
+
+  <div class="actions">
+    <button class="btn undo" id="undoBtn" onclick="act('undo')">Undo</button>
+    <button class="btn next" id="nextBtn" onclick="act('next')">Next word</button>
+    <button class="btn restart" onclick="act('restart')">Restart</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="mTitle"></h2>
+    <p id="mSub"></p>
+    <button class="btn next" id="mBtn">Next word</button>
+  </div>
+</div>
+<canvas id="fx"></canvas>
+
+<script>
+  var rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  var letters = 'abcdefghijklmnopqrstuvwxyz';
+  var prev = null;
+
+  // ----- build keyboard -----
+  var kb = document.getElementById('kb');
+  rows.forEach(function (r) {
+    var row = document.createElement('div');
+    row.className = 'krow';
+    r.split('').forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'key'; b.id = 'k_' + c; b.textContent = c;
+      b.onclick = function () { call('/api/guess?c=' + c); };
+      row.appendChild(b);
+    });
+    kb.appendChild(row);
+  });
+
+  // ----- sound -----
+  var ac = null, soundOn = true;
+  function beep(freq, dur, type, delay, vol) {
+    if (!soundOn) return;
+    try {
+      if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+      var o = ac.createOscillator(), g = ac.createGain();
+      var t = ac.currentTime + (delay || 0);
+      o.type = type || 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol || 0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t); o.stop(t + dur);
+    } catch (e) {}
+  }
+  function sfxGood() { beep(660, .12, 'triangle'); beep(880, .16, 'triangle', .08); }
+  function sfxBad()  { beep(170, .28, 'sawtooth', 0, .06); }
+  function sfxWin()  { [523, 659, 784, 1047].forEach(function (f, i) { beep(f, .22, 'triangle', i * .11); }); }
+  function sfxLose() { [330, 262, 196].forEach(function (f, i) { beep(f, .3, 'sawtooth', i * .16, .05); }); }
+  function toggleSound() {
+    soundOn = !soundOn;
+    document.getElementById('sound').textContent = 'Sound: ' + (soundOn ? 'On' : 'Off');
+  }
+
+  // ----- confetti -----
+  function confetti() {
+    var c = document.getElementById('fx'), x = c.getContext('2d');
+    c.width = window.innerWidth; c.height = window.innerHeight;
+    var cols = ['#22e6ff', '#a78bfa', '#ff3d8b', '#3dffa0', '#ffc83d'], ps = [], i;
+    for (i = 0; i < 150; i++) {
+      ps.push({ x: c.width / 2 + (Math.random() - .5) * 220, y: c.height * .45,
+                vx: (Math.random() - .5) * 15, vy: -Math.random() * 15 - 4,
+                s: 6 + Math.random() * 6, r: Math.random() * 6, vr: (Math.random() - .5) * .4,
+                col: cols[Math.floor(Math.random() * cols.length)] });
+    }
+    var f = 0, total = 180;
+    (function loop() {
+      x.clearRect(0, 0, c.width, c.height);
+      x.globalAlpha = Math.max(0, 1 - f / total);
+      ps.forEach(function (p) {
+        p.vy += .36; p.x += p.vx; p.y += p.vy; p.vx *= .99; p.r += p.vr;
+        x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.col;
+        x.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * .6); x.restore();
+      });
+      f++;
+      if (f < total) requestAnimationFrame(loop); else x.clearRect(0, 0, c.width, c.height);
+    })();
+  }
+
+  // ----- server calls -----
+  function call(url) {
+    fetch(url, { method: 'POST' }).then(function (r) { return r.json(); }).then(render);
+  }
+  function act(name) { call('/api/' + name); }
+
+  // ----- render -----
+  function render(s) {
+    var playing = s.status === 'playing';
+    var ended = s.status === 'won' || s.status === 'lost' || s.status === 'finished';
+
+    document.getElementById('score').textContent = s.score;
+    document.getElementById('played').textContent = s.played;
+    document.getElementById('remaining').textContent = s.remaining;
+
+    // hearts
+    var h = '';
+    for (var i = 0; i < s.max; i++) h += '<span class="heart' + (i < s.lives ? '' : ' off') + '">\u2665</span>';
+    document.getElementById('hearts').innerHTML = h;
+
+    // hangman drawing
+    var wrongCount = s.max - s.lives;
+    for (var p = 0; p < 6; p++) document.getElementById('p' + p).classList.toggle('on', p < wrongCount);
+    document.getElementById('svg').classList.toggle('dead', s.status === 'lost');
+
+    // events (sounds + animations)
+    var wasPlaying = prev && prev.status === 'playing';
+    var wrongEvent = wasPlaying && s.wrong.length > prev.wrong.length;
+    var goodEvent = wasPlaying && !wrongEvent && s.guessed.length > prev.guessed.length && s.status !== 'lost';
+
+    // word tiles
+    var w = document.getElementById('word');
+    w.innerHTML = '';
+    s.display.split('').forEach(function (ch, idx) {
+      var t = document.createElement('div');
+      var blank = ch === '_';
+      t.className = 'tile' + (blank ? ' blank' : '');
+      t.innerHTML = blank ? '&nbsp;' : ch;
+      if (!blank && wasPlaying && prev.display.length === s.display.length && prev.display.charAt(idx) === '_' && s.status !== 'lost') {
+        t.classList.add('pop');
+      }
+      if (s.status === 'lost' && s.guessed.indexOf(ch) < 0) t.classList.add('miss');
+      w.appendChild(t);
+    });
+
+    // message
+    var msg = document.getElementById('msg');
+    msg.textContent = (s.status === 'finished') ? '' : s.message;
+    msg.className = 'msg' + (s.message === 'Correct!' ? ' good' : (s.message === 'Wrong!' ? ' bad' : ''));
+
+    // keyboard
+    for (var j = 0; j < letters.length; j++) {
+      var c = letters[j], k = document.getElementById('k_' + c);
+      var isG = s.guessed.indexOf(c) >= 0, isW = s.wrong.indexOf(c) >= 0;
+      k.className = 'key' + (isG ? (isW ? ' bad' : ' good') : '');
+      k.disabled = isG || !playing;
+    }
+
+    // buttons
+    document.getElementById('undoBtn').disabled = !playing || s.stack.length === 0;
+    document.getElementById('nextBtn').disabled = playing;
+
+    // overlay
+    var ov = document.getElementById('overlay');
+    var title = document.getElementById('mTitle'), sub = document.getElementById('mSub'), mb = document.getElementById('mBtn');
+    if (s.status === 'won') {
+      title.textContent = 'VICTORY'; title.className = 'won';
+      sub.innerHTML = 'You cracked it: <b>' + s.display + '</b>';
+      mb.textContent = 'Next word'; mb.onclick = function () { act('next'); };
+    } else if (s.status === 'lost') {
+      title.textContent = 'GAME OVER'; title.className = 'lost';
+      sub.innerHTML = 'The word was <b>' + s.display + '</b>';
+      mb.textContent = 'Next word'; mb.onclick = function () { act('next'); };
+    } else if (s.status === 'finished') {
+      title.textContent = 'ALL DONE'; title.className = 'done';
+      sub.innerHTML = 'Final score <b>' + s.score + ' / ' + s.played + '</b>';
+      mb.textContent = 'Play again'; mb.onclick = function () { act('restart'); };
+    }
+    ov.classList.toggle('show', ended);
+
+    // fire effects
+    var game = document.getElementById('game');
+    if (wrongEvent) { game.classList.remove('shake'); void game.offsetWidth; game.classList.add('shake'); sfxBad(); }
+    if (goodEvent) sfxGood();
+    if (wasPlaying && s.status === 'won') { sfxWin(); setTimeout(confetti, 350); }
+    if (wasPlaying && s.status === 'lost') sfxLose();
+
+    prev = s;
+  }
+
+  // ----- keyboard shortcuts -----
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      var k = document.getElementById('k_' + e.key.toLowerCase());
+      if (k && !k.disabled) call('/api/guess?c=' + e.key.toLowerCase());
+    } else if (e.key === 'Backspace') {
+      act('undo');
+    } else if (e.key === 'Enter') {
+      if (prev && prev.status === 'finished') act('restart'); else act('next');
+    }
+  });
+
+  fetch('/api/state').then(function (r) { return r.json(); }).then(render);
+</script>
+</body>
+</html>
